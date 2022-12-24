@@ -148,8 +148,9 @@ generateMLdata <- function(model, mydata) {
     }
     vecdata <- sapply(as.list(mydata$feedback), f2vec)
     vecdatat <- as_tibble(t(vecdata))
-    names(vecdatat) <- c("f1", "f2", "f3", "f4", "f5",
-                         "f6", "f7", "f8", "f9", "f10")
+    nf <- dim(vecdatat)[2]
+    nameseq <- lapply(seq(1, nf), function(x){paste0("f",x)})
+    names(vecdatat) <- nameseq
     vecdatat$reviewid <- seq(1,length(vecdatat$f1))
     vecdatat$sentence <- as.factor(vecdatat$reviewid)
     
@@ -157,31 +158,33 @@ generateMLdata <- function(model, mydata) {
 }
 
 vecdatat10 <- generateMLdata(model10, reviewData) 
+vecdatat15 <- generateMLdata(model15, reviewData) 
+vecdatat20 <- generateMLdata(model20, reviewData) 
 
 
-f2vec <- function(x) {
-    y <- doc2vec(object = model, newdata = x, split=' ')
-    return(y)
+#### 合并数据 ####
+mergedata <- function(vecx, emox, labelnum = 3) {
+    MLdata <- left_join(vecx, emox, by = "sentence")
+    nf <- dim(vecx)[2] - 2
+    if (labelnum == 3) {
+        MLdata$label[which(MLdata$affectScore>0)] <- "good"
+        MLdata$label[which(MLdata$affectScore==0)] <- "neutral"
+        MLdata$label[which(MLdata$affectScore<0)] <- "bad"
+    } else {
+        MLdata$label[which(MLdata$affectScore>0)] <- "good"
+        MLdata$label[which(MLdata$affectScore<=0)] <- "not good"
+    }
+
+    finaldata <- MLdata %>%
+        filter(!is.na(label)) %>%
+        mutate(label = as.factor(label)) %>%
+        select(names(vecx)[1:nf], label)
+    return(finaldata)
 }
 
-vecdata <- sapply(as.list(reviewData$feedback), f2vec)
-vecdatat <- as_tibble(t(vecdata))
-names(vecdatat) <- c("f1", "f2", "f3", "f4", "f5",
-                     "f6", "f7", "f8", "f9", "f10")
-vecdatat$reviewid <- seq(1,length(vecdatat$f1))
-vecdatat$sentence <- as.factor(vecdatat$reviewid)
-
-vecdatat
-#### 合并数据 ####
-MLdata <- left_join(vecdatat, emoScore, by = "sentence")
-MLdata$label[which(MLdata$affectScore>0)] <- "good"
-MLdata$label[which(MLdata$affectScore==0)] <- "neutral"
-MLdata$label[which(MLdata$affectScore<0)] <- "bad"
-finaldata <- MLdata %>%
-    filter(!is.na(label)) %>%
-    mutate(label = as.factor(label)) %>%
-    select(f1:f10, label)
-finaldata
+finaldata10 <- mergedata(vecdatat10, emoScore, 3)
+finaldata15 <- mergedata(vecdatat15, emoScore, 3)
+finaldata20 <- mergedata(vecdatat20, emoScore, 3)
 
 ###################### step 4: naive bayes analysis #########################
 #### 朴素贝叶斯分类器 ####
@@ -196,24 +199,6 @@ bayesCV <- resample(learner = bayes, task = reviewTask,
                     measures = list(mmce, acc))
 bayesCV$aggr
 
-#### 合并数据2 ####
-MLdata2 <- left_join(vecdatat, emoScore, by = "sentence")
-MLdata2$label[which(MLdata$affectScore>0)] <- "good"
-MLdata2$label[which(MLdata$affectScore<=0)] <- "not good"
-finaldata2 <- MLdata2 %>%
-    filter(!is.na(label)) %>%
-    mutate(label = as.factor(label)) %>%
-    select(f1:f10, label)
-finaldata2
-#### 朴素贝叶斯分类器 ####
-reviewTask2 <- makeClassifTask(data = finaldata2, target = "label")
-bayesModel2 <- train(bayes, reviewTask2)
-
-
-bayesCV2 <- resample(learner = bayes, task = reviewTask2,
-                    resampling = kFold,
-                    measures = list(mmce, acc, fpr, fnr))
-bayesCV2$aggr
 
 
 
