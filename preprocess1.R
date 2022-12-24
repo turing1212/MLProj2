@@ -140,6 +140,17 @@ model20 <- word2vec(x = './segmented.txt',
 emb20 <- as.matrix(model20)
 #predict(model, '漂亮', type='nearest', top_n = 10)
 
+generateModel <- function(filedir, ndim, niter) {
+    model <- word2vec(x = filedir, 
+                        dim = ndim,  
+                        iter = niter, 
+                        split = c(" ",  "。？！；、～"),
+                        threads = parallel::detectCores())
+    return(model)
+}
+
+
+
 #### generate ML data ####
 generateMLdata <- function(model, mydata) {
     f2vec <- function(x) {
@@ -199,10 +210,24 @@ bayesCV <- resample(learner = bayes, task = reviewTask,
                     measures = list(mmce, acc))
 bayesCV$aggr
 
+bayesClassifier <- function(mydata, n_fold, n_rep) {
+    reviewTask <- makeClassifTask(data = mydata, target = "label")
+    bayes <- makeLearner("classif.naiveBayes")
+    kFold <- makeResampleDesc(method = "RepCV", folds = n_fold, 
+                              rep = n_rep, stratify = TRUE)
+    bayesCV <- resample(learner = bayes, task = reviewTask,
+                        resampling = kFold,
+                        measures = list(mmce, acc))
+    return(bayesCV$aggr)
+}
 
+Result1 <- bayesClassifier(finaldata10, 10, 50)
+Result2 <- bayesClassifier(finaldata15, 10, 50)
+Result3 <- bayesClassifier(finaldata20, 10, 50)
 
+#bayesModel <- train(bayes, reviewTask)
 
-###################### step 5: 加入停用词 #########################
+#################### 补充: 加入停用词 #########################
 # 分词时加入stopword
 stopword <- "D:/Rexercise/MLProj2/dict/stopwords.txt"
 wk_stopword <- worker(stop_word = stopword,bylines = TRUE)
@@ -239,9 +264,9 @@ sum(emoScore_s$affectScore==0) # 中评数量
 sum(emoScore_s$affectScore<0) # 差评数量
 
 text$sentence <- as.factor(text$reviewid) 
-text_labeled <- left_join(text, emoScore, by = "sentence") # 合并标签和评论
-text_labeled
-which(is.na(text_labeled$affectScore))
+text_labeled_s <- left_join(text, emoScore_s, by = "sentence") # 合并标签和评论
+text_labeled_s
+which(is.na(text_labeled_s$affectScore))
 
 #### 画词云图 ####
 # all worlds
@@ -256,3 +281,26 @@ fc_posneg_s %>% mutate(sentiment = as.factor(sentiment)) %>%
     count(term, sentiment) %>%
     acast(term ~ sentiment, value.var = "n", fill = 0) %>%
     comparison.cloud(colors = c("gray80", "gray20"), max.words = 100)
+
+#### 提取特征 ####
+segmented_text_s <- stringr::str_c(fc_s$term, collapse = " ") %>% c()
+readr::write_file(segmented_text_s, file = './segmenteds.txt')
+model_s10 <- generateModel('./segmenteds.txt', 10, 50)
+model_s15 <- generateModel('./segmenteds.txt', 15, 50)
+model_s20 <- generateModel('./segmenteds.txt', 20, 50)
+emb_s10 <- as.matrix(model_s10)
+
+#### 生成特征向量 ####
+vecdatat10_s <- generateMLdata(model_s10, reviewData) 
+vecdatat15_s <- generateMLdata(model_s15, reviewData) 
+vecdatat20_s <- generateMLdata(model_s20, reviewData) 
+
+#### 合并数据 ####
+finaldata10_s <- mergedata(vecdatat10_s, emoScore_s, 3)
+finaldata15_s <- mergedata(vecdatat15_s, emoScore_s, 3)
+finaldata20_s <- mergedata(vecdatat20_s, emoScore_s, 3)
+
+#### 模型训练 ####
+Result1_s <- bayesClassifier(finaldata10_s, 10, 50)
+Result2_s <- bayesClassifier(finaldata15_s, 10, 50)
+Result3_s <- bayesClassifier(finaldata20_s, 10, 50)
